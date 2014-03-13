@@ -1,22 +1,26 @@
-//
-// TODO schedule times, googlemaps
-//
-// parser:parser.123456
+/**
+ * Church info crawler
+ *
+ * @author Jakub Zitny
+ * @since Thu Mar 13 14:44:02 HKT 2014
+ *
+ * TODO: schedule times, googlemaps, objects
+ *
+ */
 
 var request = require('request');
 var cheerio = require('cheerio');
-var jq = require('jquery');
 var http = require('http');
 var cradle = require('cradle');
 
-// web
+// web consts
 var street_label = "SK: ";
 var phone_label = "Tel. ";
 var email_label = "E-mail: ";
 var br = "<br>";
-var url = 'http://concordiapax.byl.cz/';
 
-// db
+// setup
+var url = 'http://concordiapax.byl.cz/';
 var db_credentials = {
   username: 'parser',
   password: 'parser.123456'
@@ -34,14 +38,6 @@ function ChurchObject(name, street, city, phones, web, email, schedule) {
   this.web = web;
   this.email = email;
   this.schedule = schedule;
-}
-
-// dataset for a city
-function LocalData() {
-  this.churches = new Array();
-  this.addChurch = function(church) {
-    this.churches[church.shortname] = church;
-  }
 }
 
 // mode
@@ -62,11 +58,15 @@ if (mode == "upload") {
   });
 }
 
-// parse the homepage
+// parse the homepage and crawl
 request(url, function(err, resp, body){
     loadLinks(body);
 });
 
+/**
+ * loads links from homepage pointing to pages
+ * retrieves data from each page
+ */
 function loadLinks(body) {
   $ = cheerio.load(body);
   links = $('div ul li a');
@@ -81,6 +81,11 @@ function loadLinks(body) {
   });
 }
 
+/**
+ * parses single page
+ * if debug is set it prints markdown info
+ * if upload is set it uploads data to cdb
+ */
 function loadPage(body, section) {
   if (mode == "debug") {
     console.log(section);
@@ -105,6 +110,9 @@ function loadPage(body, section) {
   }
 }
 
+/**
+ * processes single church
+ */
 function processChurch(name, city, col1, col2, col3) {
   text = col1.html();
   var street = processChurchStreet(text);
@@ -132,6 +140,9 @@ function processChurch(name, city, col1, col2, col3) {
   return church;
 }
 
+/**
+ * uploads church document to cdb
+ */
 function uploadChurch(church) {
   db.save(church,
     function (err, res) {
@@ -143,6 +154,10 @@ function uploadChurch(church) {
   });
 }
 
+/**
+ * retrieves church street
+ * @return string od street
+ */ 
 function processChurchStreet(text) {
   street_raw = text.substring(
     text.indexOf(street_label) + street_label.length,
@@ -153,6 +168,10 @@ function processChurchStreet(text) {
   return street;
 }
 
+/**
+ * retrieves church phones
+ * @return array of phones
+ */ 
 function processChurchPhones(text) {
   phones = new Array();
   if (text.indexOf(phone_label) != -1) {
@@ -180,6 +199,10 @@ function processChurchPhones(text) {
   return phones;
 }
 
+/**
+ * retrieves church email
+ * @return string of email
+ */ 
 function processChurchEmail(text) {
   email = undefined;
   if (text.indexOf(email_label) != -1) {
@@ -195,6 +218,10 @@ function processChurchEmail(text) {
   return email;
 }
 
+/**
+ * retrieves church masses
+ * @return array of days and masses (array index is day 1-7)
+ */ 
 function processChurchMasses(text) {
   schedule = new Array();
   sched_raw = col2.html().split(br);
@@ -278,16 +305,28 @@ function processChurchMassesDays(day, day_label) {
   return false;
 }
 
+/**
+ * clears dirty string
+ */
 function clearString(string) {
   return string.replace(/<b>/g, "").replace(/<\/b>/g, "")
     .replace(/&nbsp/g, "").replace(/;;/g, ";").replace('\r\n', "")
     .replace(/<br>/g, "");
 }
 
+/**
+ * trims whitespace from beginning
+ * and end of given string
+ */
 function trimString (string) {
     return string.replace(/^\s\s*/, '').replace(/\s\s*$/, '');
 }
 
+/**
+ * shortens string for ascii string ids / shortnames
+ * replaces czech specific letter with english ones
+ * removes other useless stuff
+ */
 function shortenString(string){
   string = string.toLowerCase();
   string = string.replace(/á/g, 'a');
@@ -312,3 +351,4 @@ function shortenString(string){
   string = string.replace(/ő/g, '');
   return string.replace(/\ */g, '');
 }
+
