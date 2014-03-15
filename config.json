@@ -1,0 +1,23 @@
+{
+  "env": {
+    "development": {
+        "env": "development",
+        "port": 3000
+    }, 
+    "production": {
+        "env": "production",
+        "port": 80
+    }
+  },
+  "var": {
+    "db": {
+      "url": "http://178.77.239.163/",
+      "name": "massnow",
+      "credentials": {
+        "username": "parser",
+        "password": "parser.123456"
+      }
+    },
+    "testvar": "asd"
+  }
+}
