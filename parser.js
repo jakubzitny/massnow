@@ -18,10 +18,13 @@ var logic = require('./logic');
 /**
  * Config.
  */
-var config = common.config();
 var climode = (process.argv[0] == 'node') ? process.argv[2] : process.argv[1];
+var config = common.config();
+config.mode = climode;
 
 // parse the homepage and crawl
-pp = new logic.PragueParser();
-pp.run(climode);
+//pp = new logic.PragueParser();
+//pp.run(config);
 
+pp = new logic.TaipeiParser();
+pp.run(config);

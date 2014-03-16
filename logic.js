@@ -20,6 +20,64 @@ var Church = function(name, street, city, phones, web, email, schedule) {
   this.schedule = schedule;
 }
 
+
+/**
+ *
+ * https://developers.google.com/maps/documentation/geocoding/#Geocoding
+ */
+var GeoLocator = function(config, country_code) {
+  this.protocol = "https"; 
+  this.http = require(this.protocol);
+  this.url_builder = require('url');
+  this.mapconfig = config["var"].map;
+  this.url_o = {
+    protocol: this.protocol,
+    host: "maps.googleapis.com",
+    pathname: "/maps/api/geocode/json",
+    query: {
+      key: config["var"].gapi_key,
+      sensor: "false",
+      region: country_code,
+      language: "cs",
+      components: "country:" + country_code.toUpperCase(),
+      address: ""
+    }
+  };
+
+  /**
+   * thx to http://stackoverflow.com/a/16155551/1893452
+   */
+  this.findLocation = function(address) {
+    this.url_o.query.address = address;
+    var url = this.url_builder.format(this.url_o);
+    var self = this;
+    this.http.get(url, function (response) {
+      var buffer = "";
+      var data;
+      var route;
+      response.on("data", function (chunk) {
+          buffer += chunk;
+      }); 
+      response.on("end", function (err) {
+        data = JSON.parse(buffer);
+        if (err || data.status != 'OK') {
+          // TODO handle these
+          console.error("error", err);
+        } else {
+          res_o = data.results[0].geometry.location;
+          res_a = [res_o.lng, res_o.lat];
+          //console.log(address);
+          //console.log(data.results[0].formatted_address);
+          self.emit("found", res_a);
+        }
+      }); 
+    }); 
+  };
+
+};
+
+GeoLocator.prototype.__proto__ = require('events').EventEmitter.prototype;
+
 var CouchUploader = function(config) {
   this.cradle = require('cradle');
   this.db_credentials = config.credentials;
@@ -87,15 +145,14 @@ var CouchUploader = function(config) {
 var Parser = {};
 
 Parser.prototype = {
-  street_label: "SK: ",
-  phone_label: "Tel. ",
-  email_label: "E-mail: ",
   br: "<br>",
   mode: null,
+  config: null,
   cheerio: require('cheerio'),
   request: require('request'),
-  run: function(mode) {
-    this.mode = mode;
+  run: function(config) {
+    this.mode = config.mode;
+    this.config = config;
     var that = this;
     this.request(this.url, function(e, r, b){
       that.loadLinks(b);
@@ -103,8 +160,186 @@ Parser.prototype = {
   }
 };
 
+function TaipeiParser() {
+  this.urlbase = "http://www.catholic.org.tw/en/";
+  this.url = this.urlbase + "congreMassTpe.html";
+  this.address_label = "Address";
+  this.phone_label = "Telephone";
+  this.email_label = "E-mail";
+  this.website_label = "Website";
+
+  /**
+   * TODO extract deanery, city, area
+   */
+  this.loadLinks = function(body) {
+    $ = this.cheerio.load(body);
+    links = $('body span a'); 
+    var that = this;
+    $(links).each(function(i, link){
+      var name = $(link).text();
+      var page = $(link).attr('href');
+      that.request(that.urlbase+page, function(e, r, b){
+        if (name.indexOf("TOP") == -1 && name.indexOf("HOME") == -1)
+          that.loadPage(b, name);
+      });
+    });
+  };
+
+  /**
+   *
+   */
+  this.loadPage = function(body, name) {
+    if (this.mode == "debug") {
+      console.log(name);
+      console.log("---------------------");
+    }
+    $ = this.cheerio.load(body);
+    rows = $('body table tr th').next();
+    var address = rows.next().text().trim();
+
+    gl = new GeoLocator(this.config, "tw");
+    gl.findLocation(address);
+    gl.on("found", function(res) {
+      console.log(res);
+    });
+
+    rows = $('body table tr').next();
+    var schedule_raw = [];
+    var phones = [];
+    var email = null;
+    var web = null;
+    var current_day = null;
+    while(true) {
+      $ = this.cheerio.load(rows.html());
+      td = $('td');
+      if (td.html()) {
+        var desc = td.html().removeTags();
+      } else var desc = "";
+      var data = td.next().text().trim();
+      if (desc.indexOf(this.phone_label) != -1) {
+        phones = this.processChurchPhones(data);
+      } else if (desc.indexOf(this.email_label) != -1) {
+        email = data;
+      } else if (desc.indexOf(this.website_label) != -1) {
+        web = data;
+      } else if (desc.indexOf("day") != -1) {
+        current_day = desc;
+        schedule_raw[desc] = data;
+      } else if (current_day && desc.indexOf("Mass") == -1) {
+        // hack to count also unlabeled days
+        while (schedule_raw.hasOwnProperty(current_day)) {
+          current_day += "x";
+        }
+        schedule_raw[current_day] = data;
+      }
+      rows = rows.next();
+      if (rows.html() == null) break;
+    }
+    var schedule = this.processChurchMasses(schedule_raw);
+    return this.processChurch(name, address, phones, email, web, schedule);
+  }
+
+  /**
+   *
+   */
+  this.processChurch = function(name, address, phone, email, web, schedule) {
+    var church = new Church(name, address, "Taipei", phone, web, email, schedule);
+  
+    if (this.mode == "upload") {
+      // TODO
+      uploadChurch(church);
+    } else if (this.mode == "debug") {
+      console.log("**Web:** " + church.web + "\n");
+      console.log("**E-mail:** " + church.email + "\n");
+      console.log("**Street:** " + church.street + "\n");
+      console.log("**City:** " + church.city + "\n");
+      console.log("**Phones:**\n");
+      console.log(church.phones);
+      console.log();
+      console.log("**Schedule:**\n");
+      for (i in church.schedule) {
+        for (j in church.schedule[i]) {
+          console.log("Day "+i+":", church.schedule[i][j].time,
+            church.schedule[i][j].lang);
+          console.log();
+        }
+      }
+    }
+    return church;
+  };
+
+  /**
+   *
+   */
+  this.processChurchPhones = function(phones_raw) {
+    prefix = phones_raw.getParContent();
+    phones = phones_raw.replace(/\(.*\)/g, "").split(",");
+    for (i in phones) {
+      if (phone = phones[i].match(/[0-9]{4}\-[0-9]{4}/)) {
+        phones[i] = "("+prefix+")" + phone;
+      } else {
+        delete phones[i];
+        phones.length -= 1;
+      }
+    }
+    return phones;
+  }
+
+  /**
+   *
+   */
+  this.processChurchMasses = function(schedule_raw) {
+    var schedule = [];
+    for (i = 1; i <= 7; i++) {
+      schedule[i] = [];
+    }
+    for (day_raw in schedule_raw) {
+      if (!(time = schedule_raw[day_raw].match(/..\:../))){
+        continue;
+      }
+      var timelang = {
+        'time': time[0],
+        'lang': schedule_raw[day_raw].getParContent()
+      }
+      if (day_raw.indexOf("Tuesday - Friday") != -1) {
+        for (i = 2; i <= 5; i++) {
+          schedule[i].push(timelang);
+        }
+      } else if (day_raw.indexOf("Monday") != -1) {
+        schedule[1].push(timelang);
+      } else if (day_raw.indexOf("Tuesday") != -1) {
+        schedule[2].push(timelang);
+      } else if (day_raw.indexOf("Wednesday") != -1) {
+        schedule[3].push(timelang);
+      } else if (day_raw.indexOf("Thursday") != -1) {
+        schedule[4].push(timelang);
+      } else if (day_raw.indexOf("Friday") != -1) {
+        schedule[5].push(timelang);
+      } else if (day_raw.indexOf("Saturday") != -1) {
+        schedule[6].push(timelang);
+      } else if (day_raw.indexOf("Sunday") != -1) {
+        schedule[7].push(timelang);
+      } else if (day_raw.indexOf("Weekday") != -1) {
+        for (i = 1; i <= 5; i++) {
+          schedule[i].push(timelang);
+        }
+      } else {
+        console.log("error:", day_raw);
+      }
+    }
+    return schedule;
+  };
+
+};
+
+TaipeiParser.prototype = Object.create(Parser.prototype);
+TaipeiParser.prototype.constructor = TaipeiParser;
+
 function PragueParser() {
   this.url = "http://concordiapax.byl.cz/";
+  this.street_label = "SK: ";
+  this.phone_label = "Tel. ";
+  this.email_label = "E-mail: ";
 
   /**
    *
@@ -115,8 +350,8 @@ function PragueParser() {
     var that = this;
     $(links).each(function(i, link){
       var section = $(link).text();
-      var link = $(link).attr('href');
-      that.request(that.url+link, function(e, r, b){
+      var page = $(link).attr('href');
+      that.request(that.url+page, function(e, r, b){
         if (section.indexOf("Praha") != -1) {
           that.loadPage(b, section);
         }
@@ -165,6 +400,12 @@ function PragueParser() {
     var email = this.processChurchEmail(text);
     var schedule = this.processChurchMasses(text);
     var church = new Church(name, street, city, phones, web, email, schedule);
+
+    gl = new GeoLocator(this.config, "cz");
+    gl.findLocation(street);
+    gl.on("found", function(res) {
+      console.log(res);
+    });
   
     if (this.mode == "upload") {
       // TODO
@@ -338,12 +579,17 @@ function PragueParser() {
 PragueParser.prototype = Object.create(Parser.prototype);
 PragueParser.prototype.constructor = PragueParser;
 
+/**
+ * Exports.
+ */
 exports.Church = Church;
+exports.GeoLocator = GeoLocator;
 exports.CouchUploader = CouchUploader;
 exports.PragueParser = PragueParser;
+exports.TaipeiParser = TaipeiParser;
 
 /**
- * Helper functions
+ * Helpers.
  */
 
 /**
@@ -406,3 +652,18 @@ String.prototype.idify = function() {
   return string;
 }
 
+/**
+ *
+ */
+String.prototype.removeTags = function() {
+  return this.replace(/<.*?>/g, "");
+}
+
+String.prototype.removePars = function() {
+  return this.replace(/\(/, "").replace(/\)/, "");
+}
+
+String.prototype.getParContent = function() {
+  var match = this.match(/\(.*\)/)
+  return (match) ? match[0].removePars() : null;
+}
