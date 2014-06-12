@@ -2,3 +2,49 @@ extends layout
 
 block content
   h1= church.name
+
+  div
+    p
+      b ID: 
+      = church._id
+    p
+      b Name: 
+      = church.name
+    p
+      b Codename: 
+      = church.shortname
+  h3 Location 
+  div
+     p
+       b Address: 
+       = church.street
+     p
+       b City: 
+       = church.city
+   p
+      b Latitude: 
+      = church.geo.lat
+   p
+      b Longitude: 
+      = church.geo.long
+  h3 Contact
+  p
+     b Web: 
+     = church.web
+  p
+     b Email: 
+     = church.email
+  p
+     b Phones: 
+     each phone in church.phones
+        = phone
+  h3 Mass Schedule
+  p
+     - var i = -1
+     each day in church.schedule
+        - i++
+        if day && day.length > 0
+           b day #{i}  <br />
+           each mass in day
+              i #{mass.time} in #{mass.lang}<br />
+           <br />

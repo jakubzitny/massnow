@@ -7,4 +7,4 @@ block content
   each hit in hits
     li
       a(href="/church?id="+hit._id)= hit._source.name
-      = hit._score
+      #{hit._score}
