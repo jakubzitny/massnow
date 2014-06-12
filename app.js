@@ -140,7 +140,6 @@ app.get('/search', function(req, res){
 app.get('/browse', function(req, res){ 
   db.list({"include_docs": true}, function(err, body) {
     if (!err) {
-      console.log(body.rows);
       res.render('browse', {
         docs: body.rows
       });
