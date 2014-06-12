@@ -1,10 +1,17 @@
 extends layout
 
 block content
-  h1 Search
-  p= query 
-  h2 results
-  each hit in hits
-    li
-      a(href="/church?id="+hit._id)= hit._source.name
-      #{hit._score}
+  h2 #{hits.length} results for "#{query}"
+  table(class="table table-hover table-striped")
+    tr
+      th #
+      th score
+      th name
+    - var i = 0
+    each hit in hits
+      - i++
+      tr
+        td= i
+        td= hit._score
+        td
+          a(href="/church?id="+hit._id)= hit._source.name

@@ -46,7 +46,6 @@ var bodyParser = require('body-parser');
 var methodOverride = require('method-override');
 var favicon = require('serve-favicon');
 //var urlencoded = require('urlencode');
-var methodOverride = require('method-override');
 //var router = require('router');
 
 
@@ -111,13 +110,7 @@ var esc = new es.Client({
  * routes
  */
 app.get('/', function(req, res){ 
-  db.list({"include_docs": true}, function(err, body) {
-    if (!err) {
-      res.render('index', {
-        title: 'MassNow - search',
-        body: body
-      });
-    }
+  res.render('index', {
   });
 });
 
@@ -141,6 +134,17 @@ app.get('/search', function(req, res){
       query: query,
       hits: resp.hits.hits
     });
+  });
+});
+
+app.get('/browse', function(req, res){ 
+  db.list({"include_docs": true}, function(err, body) {
+    if (!err) {
+      console.log(body.rows);
+      res.render('browse', {
+        docs: body.rows
+      });
+    }
   });
 });
 

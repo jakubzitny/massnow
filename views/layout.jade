@@ -2,6 +2,13 @@ doctype html
 html
   head
     title= title
-    //link(rel='stylesheet', href='/stylesheets/style.css')
+    link(rel='stylesheet', href='/bootstrap.min.css')
+    link(rel='stylesheet', href='/main.css')
   body
-    block content
+    .container#content(align="center")
+       img(src="icon.png" height="100px")
+       h1
+         a(href="/") MassNow
+       block content
+    script(type="text/javascript", src="/jquery.min.js")
+    script(type="text/javascript", src="/bootstrap.min.js")

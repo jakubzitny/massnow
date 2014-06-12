@@ -1,0 +1,17 @@
+extends layout
+
+block content
+  h2 browse all docs for Taipei
+  .col-md-6.col-md-offset-3
+    table(class="table table-hover table-striped")
+      tr
+        th #
+        th name
+      - var i = 0
+      each doc in docs
+        - i++
+        console.log(doc)
+        tr
+          td= i
+          td
+            a(href="/church?id="+doc.id) #{doc.doc.name}

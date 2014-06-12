@@ -1,12 +1,13 @@
 extends layout
 
 block content
-  h1= title
-  p search
-  form(method="get" action="search")
-     input(type="text" name="search" id="search")
+  #search
+    .col-md-6.col-md-offset-3
+      form(method="get" action="search" role="form")
+        input(type="text" name="search" id="search" class="form-control" placeholder="search")
+        input(type="submit" value="search" class="btn btn-primary")
+        span(style="margin: 20px") or
+        a(href="browse" role="button" class="btn btn-default") browse
 
-  h2 all docs
-  each row in body.rows
-    li
-      a(href="/church?id="+row.id)= row.doc.name
+    .clear
+      br
