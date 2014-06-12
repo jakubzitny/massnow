@@ -39,30 +39,118 @@ if (cli.prefetch) {
   // do prefetch and don't run the server
 }
 
-if (cli.env == "development") {
-  app.use(express.errorHandler());
+/**
+ * set up express middleware
+ */
+var bodyParser = require('body-parser');
+var methodOverride = require('method-override');
+var favicon = require('serve-favicon');
+//var urlencoded = require('urlencode');
+var methodOverride = require('method-override');
+//var router = require('router');
+
+
+function errorHandler(err, req, res, next) {
+  res.status(500);
+  res.render('error', { error: err });
 }
 
+function clientErrorHandler(err, req, res, next) {
+  if (req.xhr) {
+    res.send(500, { error: 'Something blew up!' });
+  } else {
+    next(err);
+  }
+}
+
+function logErrors(err, req, res, next) {
+  console.error(err.stack);
+  next(err);
+}
 
 /**
  * set up express
  */
+//app.use(logger('dev'));
+//app.use(json());
+//app.use(urlencode());
+
 app.set('port', process.env.PORT || 3000);
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'jade');
-app.use(express.favicon());
-app.use(express.logger('dev'));
-app.use(express.json());
-app.use(express.urlencoded());
-app.use(express.methodOverride());
-app.use(app.router);
+app.use(bodyParser());
+app.use(methodOverride());
+//app.use(favicon());
 app.use(express.static(path.join(__dirname, 'public')));
+app.use(logErrors);
+app.use(clientErrorHandler);
+
+if (cli.env == "development") {
+  app.use(errorHandler);
+}
+
+/**
+ * couch config
+ */
+var dbUrl = "http://" + config["var"].db.credentials.username + ":" +
+  config["var"].db.credentials.password + "@" +
+  config["var"].db.host + ":" + config["var"].db.port;
+var nano = require('nano')(dbUrl);
+var dbName = config["var"].db.name;
+var db = nano.use(dbName);
+
+/**
+ * es config
+ */
+var es = require('elasticsearch');
+var esc = new es.Client({
+  host: 'http://couch.zitny.eu:9200'
+});
 
 /**
  * routes
  */
 app.get('/', function(req, res){ 
-  res.render('index', { title: 'MassNow' });
+  db.list({"include_docs": true}, function(err, body) {
+    if (!err) {
+      res.render('index', {
+        title: 'MassNow - search',
+        body: body
+      });
+    }
+  });
+});
+
+app.get('/search', function(req, res){ 
+  var query = req.query.search;
+  // query ref at http://goo.gl/w0v7y and http://goo.gl/RzIHet
+  esc.search({
+    index: "massnow_t",
+    size: 50,
+    body: {
+      query: {
+        query_string: {
+          query: query,
+          default_field: "name"
+        }
+      }
+    }
+  }).then(function (resp) {
+    console.log("found " + resp.hits.hits.length + " for " + query);
+    res.render('search', {
+      query: query,
+      hits: resp.hits.hits
+    });
+  });
+});
+
+app.get('/church', function(req, res){ 
+  db.get(req.query.id, { revs_info: true }, function(err, body) {
+    if (!err)
+      res.render('church', {
+        church: body
+      });
+  });
 });
 
 http.createServer(app).listen(config.port, function(){

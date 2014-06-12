@@ -23,8 +23,14 @@ var config = common.config();
 config.mode = climode;
 
 // parse the homepage and crawl
+// !!
 //pp = new logic.PragueParser();
 //pp.run(config);
 
 pp = new logic.TaipeiParser();
 pp.run(config);
+
+//cu = new logic.CouchUploader(config);
+//ch = new logic.Church("ch1", "adress", "city", ['123', '456'], "email@v.b", "www.com", []);
+//cu.insertDoc(ch);
+

@@ -2,5 +2,11 @@ extends layout
 
 block content
   h1= title
-  p asd
+  p search
+  form(method="get" action="search")
+     input(type="text" name="search" id="search")
 
+  h2 all docs
+  each row in body.rows
+    li
+      a(href="/church?id="+row.id)= row.doc.name

@@ -1,23 +1,29 @@
-
 /**
  * TODO
  * sync returns, multithr
  * schedtimes, gmaps
+ * fixparse praha, tayin, http://bit.ly/1oSYOtr
  */
 
 /**
  * Objects.
  */
 
-var Church = function(name, street, city, phones, web, email, schedule) {
+var Church = function(name, street, city, phones, web, email, schedule, geo) {
   this.name = name;
-  this.shortname = name.idify();
+  var sh = require('shorthash');
+  var hash = sh.unique(street);
+  if (street == "") {
+    hash = sh.unique(name);
+  }
+  this.shortname =  hash + "_" + name.idify();
   this.street = street;
   this.city = city;
   this.phones = phones;
   this.web = web;
   this.email = email;
   this.schedule = schedule;
+  this.geo = geo;
 }
 
 
@@ -79,10 +85,48 @@ var GeoLocator = function(config, country_code) {
 GeoLocator.prototype.__proto__ = require('events').EventEmitter.prototype;
 
 var CouchUploader = function(config) {
+  this.dbUrl = "http://" + config["var"].db.credentials.username + ":" +
+    config["var"].db.credentials.password + "@" +
+    config["var"].db.host + ":" + config["var"].db.port;
+  this.nano = require('nano')(this.dbUrl);
+  this.dbName = config["var"].db.name;
+  this.db = this.nano.use(this.dbName);
+
+  /**
+   * creates db if it doesn't exist
+   * thx to http://bit.ly/1qFnSJc
+   * @since Thu May 15 13:53:24 CST 2014
+   */
+  this.insertDoc = function(doc, tried) {
+    if (typeof tried === "undefined") {
+      tried = 0;
+    }
+    var that = this;
+    this.db.insert(doc,
+      function (err, httpBody, httpHeaders) {
+        if(err) {
+          if(err.message === 'no_db_file' && tried < 1) {
+            // create database and retry
+            return that.nano.db.create(that.dbName, function (err, body) {
+              if (err) {
+                console.log("not created! " + err.message)
+              } else {
+                insert_doc(doc, tried+1);
+              }
+            });
+          }
+          else { return console.log(err); }
+        }
+        console.log(httpBody);
+    });
+  }
+}
+
+var CouchUploaderCradle = function(config) {
   this.cradle = require('cradle');
-  this.db_credentials = config.credentials;
-  this.db_name = config.name;
-  this.db_url = config.url;
+  this.db_credentials = config["var"].db.credentials;
+  this.db_name = config["var"].db.name;
+  this.db_url = config["var"].db.url;
   this.db = null;
 
   /**
@@ -90,20 +134,31 @@ var CouchUploader = function(config) {
    * @since Sat Mar 15 20:45:35 HKT 2014
    */
   this.createDb = function() {
-    var c = new(this.cradle.Connection)(this.db_url, 80, {
-      auth: this.db_credentials
+    var that = this;
+    var c = new(this.cradle.Connection)(this.db_url, 5984, {
+      auth: that.db_credentials
     });
     this.db = c.database(this.db_name);
-    this.db.exists(function (err, exists) {
+    var calls = [];
+    var exFunc = function (err, exists) {
       if (err) {
         console.log('error', err);
       } else if (exists) {
-        //console.log('connecting to db');
+        console.log('destroying old db');
+        that.destroyDb();
+        console.log('creating db');
+        that.db.create();
       } else {
         console.log('creating db');
-        db.create();
+        that.db.create();
       }
-    });
+    };
+    async.series([
+      this.db.exists(exFunc),
+      console.log("fin"),
+    ]);
+
+      console.log("asd");
   };
 
   /**
@@ -134,10 +189,14 @@ var CouchUploader = function(config) {
 
   /**
    * destroys db
-   * TODO
    */
   this.destroyDb = function() {
-    console.log("not implemented yet");
+    var that = this;
+    var c = new(this.cradle.Connection)(this.db_url, 5984, {
+      auth: that.db_credentials
+    });
+    this.db = c.database(this.db_name);
+    this.db.destroy();
   }
 
 };
@@ -150,9 +209,11 @@ Parser.prototype = {
   config: null,
   cheerio: require('cheerio'),
   request: require('request'),
+  couchUploader: null,
   run: function(config) {
     this.mode = config.mode;
     this.config = config;
+    this.couchUploader = new CouchUploader(config);
     var that = this;
     this.request(this.url, function(e, r, b){
       that.loadLinks(b);
@@ -178,9 +239,14 @@ function TaipeiParser() {
     $(links).each(function(i, link){
       var name = $(link).text();
       var page = $(link).attr('href');
+      var anchor = false;
+      if ($(link).attr('name') == "top")
+        anchor = true;
       that.request(that.urlbase+page, function(e, r, b){
-        if (name.indexOf("TOP") == -1 && name.indexOf("HOME") == -1)
+        if (name.indexOf("TOP") == -1 && name.indexOf("HOME") == -1 && !anchor) {
+          //console.log("processing: " + name + "(" + name.length + ") " + that.urlbase+page);
           that.loadPage(b, name);
+        }
       });
     });
   };
@@ -189,19 +255,12 @@ function TaipeiParser() {
    *
    */
   this.loadPage = function(body, name) {
-    if (this.mode == "debug") {
-      console.log(name);
-      console.log("---------------------");
-    }
     $ = this.cheerio.load(body);
     rows = $('body table tr th').next();
     var address = rows.next().text().trim();
 
     gl = new GeoLocator(this.config, "tw");
     gl.findLocation(address);
-    gl.on("found", function(res) {
-      console.log(res);
-    });
 
     rows = $('body table tr').next();
     var schedule_raw = [];
@@ -210,6 +269,7 @@ function TaipeiParser() {
     var web = null;
     var current_day = null;
     while(true) {
+      if (rows.html() == null) break;
       $ = this.cheerio.load(rows.html());
       td = $('td');
       if (td.html()) {
@@ -233,24 +293,31 @@ function TaipeiParser() {
         schedule_raw[current_day] = data;
       }
       rows = rows.next();
-      if (rows.html() == null) break;
     }
     var schedule = this.processChurchMasses(schedule_raw);
-    return this.processChurch(name, address, phones, email, web, schedule);
+    var that = this;
+    gl.on("found", function(res) {
+      var geo = {
+        "long": res[0],
+        "lat": res[1]
+      };
+      return that.processChurch(name, address, phones, email, web, schedule, geo);
+    });
   }
 
   /**
    *
    */
-  this.processChurch = function(name, address, phone, email, web, schedule) {
-    var church = new Church(name, address, "Taipei", phone, web, email, schedule);
-  
+  this.processChurch = function(name, address, phone, email, web, schedule, geo) {
+    var church = new Church(name, address, "Taipei", phone, web, email, schedule, geo);
     if (this.mode == "upload") {
-      // TODO
-      uploadChurch(church);
+      this.couchUploader.insertDoc(church);
     } else if (this.mode == "debug") {
+      console.log(name);
+      console.log("---------------------");
       console.log("**Web:** " + church.web + "\n");
       console.log("**E-mail:** " + church.email + "\n");
+      console.log("**GEO:** " + geo + "\n");
       console.log("**Street:** " + church.street + "\n");
       console.log("**City:** " + church.city + "\n");
       console.log("**Phones:**\n");
@@ -346,9 +413,10 @@ function PragueParser() {
    */
   this.loadLinks = function(body) {
     $ = this.cheerio.load(body);
-    links = $('div ul li a'); 
+    links = $('body div ul li a'); 
     var that = this;
     $(links).each(function(i, link){
+      console.log(link);
       var section = $(link).text();
       var page = $(link).attr('href');
       that.request(that.url+page, function(e, r, b){
@@ -647,6 +715,7 @@ String.prototype.idify = function() {
   string = string.replace(/\,/g, '');
   string = string.replace(/\-/g, '');
   string = string.replace(/\–/g, '');
+  string = string.replace(/\'/g, '');
   string = string.replace(/ő/g, '');
   string = string.replace(/\ */g, '');
   return string;

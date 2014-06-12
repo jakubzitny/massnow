@@ -11,8 +11,9 @@
   },
   "var": {
     "db": {
-      "url": "http://178.77.239.163/",
-      "name": "massnow",
+      "host": "178.77.239.211",
+      "port": "5984",
+      "name": "massnow_t",
       "credentials": {
         "username": "parser",
         "password": "parser.123456"
