@@ -1,0 +1,10 @@
+extends layout
+
+block content
+  h1 Search
+  p= query 
+  h2 results
+  each hit in hits
+    li
+      a(href="/church?id="+hit._id)= hit._source.name
+      = hit._score
