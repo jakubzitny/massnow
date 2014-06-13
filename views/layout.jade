@@ -2,13 +2,15 @@ doctype html
 html
   head
     title MassNow
+    link(rel="icon" href="/favicon.ico" type="image/x-icon")
     link(rel='stylesheet', href='/bootstrap.min.css')
     link(rel='stylesheet', href='/main.css')
   body
     .container#content(align="center")
        img(src="icon.png" height="100px")
-       h1
+       h1(style="margin-bottom: 0")
          a(href="/") MassNow
+       h3(style="margin-top: 0") intelligent church locator
        block content
     script(type="text/javascript", src="/jquery.min.js")
     script(type="text/javascript", src="/bootstrap.min.js")
