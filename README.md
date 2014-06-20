@@ -22,4 +22,3 @@ This is the main repository for our MassNow service project. More info about it 
 
 * web, backend custom crawlers (javascript) — [this repo](https://bitbucket.org/hcimassnow/massnow/src)
 * anroid app (java) — [this repo](https://bitbucket.org/hcimassnow/massnow-android/src)
-* Other guidelines
